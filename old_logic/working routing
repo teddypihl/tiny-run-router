@@ -1,0 +1,133 @@
+# backend/routing.py
+from dataclasses import dataclass
+from typing import List, Optional, Dict
+import random
+
+from .data import Graph, Edge
+
+
+def edge_cost(edge: Edge) -> float:
+    """
+    Base cost per edge: distance + penalty for worse roads + penalty for uphill.
+    """
+    base = edge.distance_m
+
+    if edge.road_type == "main_road":
+        base *= 0.8
+    elif edge.road_type == "residential":
+        base *= 1.0
+    elif edge.road_type == "path":
+        base *= 1.0
+
+    base += 3.0 * max(edge.elevation_gain_m, 0.0)
+    return base
+
+
+@dataclass
+class RouteResult:
+    nodes: List[str]
+    distance_m: float
+    elevation_gain_m: float
+    score: float  # effective score including distance penalty
+
+
+def find_best_loop(
+    graph: Graph,
+    start: str,
+    d_min_m: float,
+    d_max_m: float,
+    elev_limit_m: float,
+    target_m: float,
+) -> Optional[RouteResult]:
+
+    """
+    Guided random-walk search for a loop.
+
+    - Prefers exploring new nodes first (unvisited neighbors).
+    - Limits how many times a node can be visited in one walk.
+    - Penalizes loops with many repeated nodes.
+    - Prefers loops whose distance is close to `target_m`.
+    """
+
+    adjacency = graph.adjacency
+    if start not in adjacency:
+        raise ValueError(f"Start node {start!r} not in graph")
+
+    best: Optional[RouteResult] = None
+
+    # random search parameters
+    NUM_TRIALS = 2000        # how many random walks we try
+    MAX_STEPS = 400          # max edges per walk
+
+    # scoring parameters
+    beta = 8.0               # weight for distance deviation
+    repeat_penalty = 200.0   # penalty per node visited >1 time
+    min_loop_m = max(d_min_m, 0.6 * target_m)
+
+    for _ in range(NUM_TRIALS):
+        current = start
+        path = [start]
+        dist_m = 0.0
+        elev_gain_m = 0.0
+        raw_score = 0.0
+        visit_counts: Dict[str, int] = {start: 1}
+
+        for _step in range(MAX_STEPS):
+            neighbors = adjacency.get(current, [])
+            if not neighbors:
+                break
+
+            # 1) prefer neighbors we haven't visited yet (exploration)
+            unvisited = [e for e in neighbors if visit_counts.get(e.v, 0) == 0]
+
+            if unvisited:
+                edge = random.choice(unvisited)
+            else:
+                # 2) otherwise, allow a node at most 2 visits total
+                candidates = [e for e in neighbors if visit_counts.get(e.v, 0) < 2]
+                if not candidates:
+                    break
+                edge = random.choice(candidates)
+
+            nxt = edge.v
+
+            new_dist = dist_m + edge.distance_m
+            if new_dist > d_max_m:
+                break
+
+            new_elev = elev_gain_m + max(edge.elevation_gain_m, 0.0)
+            if new_elev > elev_limit_m:
+                break
+
+            dist_m = new_dist
+            elev_gain_m = new_elev
+            raw_score += edge_cost(edge)
+            path.append(nxt)
+            visit_counts[nxt] = visit_counts.get(nxt, 0) + 1
+            current = nxt
+
+                        # closed loop back to start?
+            if current == start:
+                # if too short, DO NOT close yet: keep walking
+                if dist_m < min_loop_m:
+                    continue
+
+                # ok, now it's a valid candidate
+                deviation = abs(dist_m - target_m)
+
+                repeated_nodes = sum(1 for c in visit_counts.values() if c > 1)
+
+                effective_score = raw_score + beta * (deviation ** 2) + repeat_penalty * repeated_nodes
+
+                if best is None or effective_score < best.score:
+                    best = RouteResult(
+                        nodes=list(path),
+                        distance_m=dist_m,
+                        elevation_gain_m=elev_gain_m,
+                        score=effective_score,
+                    )
+
+                break  # stop this walk, go to next trial
+
+
+    return best

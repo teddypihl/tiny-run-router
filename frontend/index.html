@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Tiny Run Router</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+
+    <style>
+      :root {
+        --bg-gradient: radial-gradient(circle at top, #f5f7ff 0%, #dfe6f6 35%, #c8d4f0 100%);
+        --card-bg: rgba(255, 255, 255, 0.85);
+        --accent: #007aff;
+        --accent-soft: rgba(0, 122, 255, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+          "Helvetica Neue", Arial, sans-serif;
+        height: 100vh;
+        background: var(--bg-gradient);
+      }
+
+      #app {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      #map {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+      }
+
+      .control-card {
+        position: absolute;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+
+        background: var(--card-bg);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+
+        border-radius: 20px;
+        padding: 16px 18px;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+        max-width: 420px;
+        width: calc(100% - 32px);
+
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+      }
+
+      .card-title {
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      .card-subtitle {
+        font-size: 12px;
+        color: #6b7280;
+      }
+
+      #route-form {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        align-items: end;
+      }
+
+      .input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12px;
+      }
+
+      .input-group label {
+        color: #4b5563;
+      }
+
+      .input-group input {
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+        padding: 6px 9px;
+        font-size: 13px;
+        outline: none;
+        background: #f9fafb;
+      }
+
+      .input-group input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 1px var(--accent-soft);
+        background: #ffffff;
+      }
+
+      button[type="submit"],
+      .secondary-btn {
+        border: none;
+        border-radius: 999px;
+        padding: 9px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        background: var(--accent);
+        color: white;
+        box-shadow: 0 8px 18px rgba(0, 122, 255, 0.35);
+        transition:
+          transform 0.08s ease-out,
+          box-shadow 0.08s ease-out,
+          background 0.12s ease-out;
+        white-space: nowrap;
+      }
+
+      button[type="submit"]:hover,
+      .secondary-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px rgba(0, 122, 255, 0.4);
+      }
+
+      button[type="submit"]:active,
+      .secondary-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 4px 10px rgba(0, 122, 255, 0.28);
+        background: #0062d6;
+      }
+
+      .secondary-btn {
+        background: #e5e7eb;
+        color: #111827;
+        box-shadow: none;
+      }
+
+      #status {
+        font-size: 12px;
+        color: #4b5563;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #f3f4f6;
+        align-self: flex-start;
+      }
+
+      #status.error {
+        color: #b91c1c;
+        background: #fee2e2;
+      }
+
+      #status.success {
+        color: #065f46;
+        background: #d1fae5;
+      }
+
+      .edit-buttons {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+      }
+
+      /* Leaflet default overrides for a cleaner look */
+      .leaflet-control-attribution {
+        font-size: 10px;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+      }
+
+      .leaflet-control-zoom a {
+        border-radius: 999px !important;
+      }
+
+      /* Style for Leaflet.Editable vertex markers (the draggable nodes) */
+      .leaflet-editing-icon {
+        background: #f97316;      /* orange */
+        border-radius: 999px;     /* round */
+        border: 2px solid #ffffff;
+        width: 10px;
+        height: 10px;
+        margin-left: -5px;  /* center the dot on the point */
+        margin-top: -5px;
+        box-shadow: 0 0 4px rgba(0, 0, 0, 0.25);
+      }
+
+
+      @media (max-width: 600px) {
+        .control-card {
+          top: 10px;
+          width: calc(100% - 20px);
+          padding: 12px 14px;
+        }
+
+        #route-form {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          row-gap: 8px;
+        }
+
+        button[type="submit"] {
+          grid-column: span 2;
+          width: 100%;
+        }
+
+        .edit-buttons {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="map"></div>
+
+      <div class="control-card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Tiny Run Router</div>
+            <div class="card-subtitle">Click map to set start · get a loop.</div>
+          </div>
+        </div>
+
+        <form id="route-form">
+          <div class="input-group">
+            <label for="min-distance">Min km</label>
+            <input id="min-distance" type="number" step="0.1" value="3" />
+          </div>
+          <div class="input-group">
+            <label for="max-distance">Max km</label>
+            <input id="max-distance" type="number" step="0.1" value="7" />
+          </div>
+          <div class="input-group">
+            <label for="max-elev">Max climb (m)</label>
+            <input id="max-elev" type="number" step="10" value="200" />
+          </div>
+          <button type="submit">Find loop</button>
+        </form>
+
+        <!-- New buttons for editing -->
+        <div class="edit-buttons">
+          <button type="button" id="edit-route-btn" class="secondary-btn">
+            Edit route
+          </button>
+          <button type="button" id="apply-edits-btn" class="secondary-btn">
+            Apply edits
+          </button>
+        </div>
+
+        <div id="status">Waiting for search…</div>
+      </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+
+    <!-- Leaflet.Editable plugin (for draggable vertices) -->
+    <script src="https://unpkg.com/leaflet-editable@1.2.0/src/Leaflet.Editable.js"></script>
+
+    <script src="main.js"></script>
+  </body>
+</html>
