@@ -75,7 +75,7 @@ def _add_undirected_edge(
 
 # backend/data.py  (keep the dataclasses and helpers above as they are)
 
-def build_graph(center_lat: float, center_lon: float, dist_m: int = 3000) -> Graph:
+def build_graph(center_lat: float, center_lon: float, dist_m: int = 1200) -> Graph:
     """
     Build a graph from OpenStreetMap around a given center point.
     """
@@ -166,7 +166,7 @@ def build_default_graph() -> Graph:
     """
     CENTER_LAT = 60.4500
     CENTER_LON = 22.2660
-    return build_graph(CENTER_LAT, CENTER_LON)
+    return build_graph(CENTER_LAT, CENTER_LON, dist_m=1200)
 
 
 def find_nearest_node_id(graph: Graph, lat: float, lon: float) -> str:
